@@ -1,4 +1,3 @@
-
 name: TOXICAMIT07S APK Build
 
 on:
@@ -21,42 +20,69 @@ jobs:
           distribution: temurin
           java-version: '21'
 
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Cache Gradle
+        uses: gradle/actions/setup-gradle@v4
+
       - name: Extract ZIP
         run: |
           unzip -q vnmxyz.zip -d source
 
-      - name: Find Android Project
+      - name: Find Android project and initialize Git
+        shell: bash
         run: |
-          PROJECT_DIR="$(dirname "$(find source -type f -name gradlew -print -quit)")"
-
-          if [ -z "$PROJECT_DIR" ] || [ ! -f "$PROJECT_DIR/settings.gradle" ]; then
-            echo "Android project not found in vnmxyz.zip"
+          set -euo pipefail
+          WRAPPER="$(find source -type f -name gradlew -print -quit)"
+          if [ -z "$WRAPPER" ]; then
+            echo "::error::gradlew was not found inside vnmxyz.zip"
             exit 1
           fi
-
+          PROJECT_DIR="$(dirname "$WRAPPER")"
+          if [ ! -f "$PROJECT_DIR/settings.gradle" ]; then
+            echo "::error::settings.gradle was not found beside gradlew"
+            exit 1
+          fi
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-          echo "Found project: $PROJECT_DIR"
+          cd "$PROJECT_DIR"
+          git init
+          git config user.name "TOXICAMIT07S Build"
+          git config user.email "toxicamit07s-build@users.noreply.github.com"
+          git add -A
+          git commit -m "Prepare source for APK build"
 
-      - name: Prepare Git
+      - name: Download matching Shizuku API source
         run: |
-          git -C "$PROJECT_DIR" init
-          git -C "$PROJECT_DIR" config user.name "TOXICAMIT07S"
-          git -C "$PROJECT_DIR" config user.email "build@example.invalid"
-          git -C "$PROJECT_DIR" add -A
-          git -C "$PROJECT_DIR" commit -m "Prepare Android build"
+          git clone --depth 1 https://github.com/RikkaApps/Shizuku-API.git "$PROJECT_DIR/api"
 
-      - name: Download Official Shizuku API
+      - name: Install Android build components
         run: |
-          rm -rf "$PROJECT_DIR/api"
-          git clone --depth 1 \
-            https://github.com/RikkaApps/Shizuku-API.git \
-            "$PROJECT_DIR/api"
+          yes | sdkmanager --licenses >/dev/null
+          sdkmanager \
+            "platforms;android-36" \
+            "build-tools;37.0.0" \
+            "ndk;29.0.14206865" \
+            "cmake;3.31.0"
 
-      - name: Build APK
+      - name: Build Debug APK
+        shell: bash
         run: |
+          set -euo pipefail
           cd "$PROJECT_DIR"
           chmod +x gradlew
-          ./gradlew :manager:assembleDebug --no-daemon
+
+          # Retry once/twice for temporary repository throttling or network hiccups.
+          for attempt in 1 2 3; do
+            if ./gradlew :manager:assembleDebug --no-daemon --stacktrace; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "Build attempt $attempt failed; waiting before retry..."
+              sleep $((attempt * 30))
+            fi
+          done
+          exit 1
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
