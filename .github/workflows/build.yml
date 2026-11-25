@@ -1,0 +1,39 @@
+name: TOXICAMIT07S APK Build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Extract ZIP
+        run: unzip vnmxyz.zip
+
+      - name: Download API
+        run: |
+          git clone --depth 1 https://github.com/rushiranpise/Shizuku-API.git Shizuku-Next-master/api
+
+      - name: Build APK
+        run: |
+          cd Shizuku-Next-master
+          chmod +x gradlew
+          ./gradlew :manager:assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: TOXICAMIT07S-APK
+          path: Shizuku-Next-master/manager/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
