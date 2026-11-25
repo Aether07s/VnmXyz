@@ -1,7 +1,11 @@
+
 name: TOXICAMIT07S APK Build
 
 on:
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -18,22 +22,45 @@ jobs:
           java-version: '21'
 
       - name: Extract ZIP
-        run: unzip vnmxyz.zip
-
-      - name: Download API
         run: |
-          git clone --depth 1 https://github.com/rushiranpise/Shizuku-API.git Shizuku-Next-master/api
+          unzip -q vnmxyz.zip -d source
+
+      - name: Find Android Project
+        run: |
+          PROJECT_DIR="$(dirname "$(find source -type f -name gradlew -print -quit)")"
+
+          if [ -z "$PROJECT_DIR" ] || [ ! -f "$PROJECT_DIR/settings.gradle" ]; then
+            echo "Android project not found in vnmxyz.zip"
+            exit 1
+          fi
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Found project: $PROJECT_DIR"
+
+      - name: Prepare Git
+        run: |
+          git -C "$PROJECT_DIR" init
+          git -C "$PROJECT_DIR" config user.name "TOXICAMIT07S"
+          git -C "$PROJECT_DIR" config user.email "build@example.invalid"
+          git -C "$PROJECT_DIR" add -A
+          git -C "$PROJECT_DIR" commit -m "Prepare Android build"
+
+      - name: Download Official Shizuku API
+        run: |
+          rm -rf "$PROJECT_DIR/api"
+          git clone --depth 1 \
+            https://github.com/RikkaApps/Shizuku-API.git \
+            "$PROJECT_DIR/api"
 
       - name: Build APK
         run: |
-          cd Shizuku-Next-master
+          cd "$PROJECT_DIR"
           chmod +x gradlew
-          ./gradlew :manager:assembleDebug
+          ./gradlew :manager:assembleDebug --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: TOXICAMIT07S-APK
-          path: Shizuku-Next-master/manager/build/outputs/apk/debug/*.apk
+          path: ${{ env.PROJECT_DIR }}/manager/build/outputs/apk/debug/*.apk
           if-no-files-found: error
-
